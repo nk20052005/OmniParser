@@ -138,6 +138,7 @@ class VLMAgent:
 
         # drop looping actions msg, byte image etc
         planner_messages = messages
+        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=10)
         _remove_som_images(planner_messages)
         _maybe_filter_to_n_most_recent_images(planner_messages, self.only_n_most_recent_images)
 
@@ -354,6 +355,22 @@ IMPORTANT NOTES:
 """ 
 
         return main_section
+
+def _trim_messages_to_n_most_recent_turns(
+    messages: list,
+    turns_to_keep: int = 10,
+):
+    """
+    Keep the first message (the original task) and the last `turns_to_keep * 2`
+    messages (each turn = 1 assistant message + 1 user/tool-result message).
+    This prevents unbounded context growth without losing the task or recent history.
+    """
+    if len(messages) <= 1:
+        return
+    max_history = turns_to_keep * 2
+    if len(messages) - 1 > max_history:
+        messages[1:] = messages[-(max_history):]
+
 
 def _remove_som_images(messages):
     for msg in messages:
