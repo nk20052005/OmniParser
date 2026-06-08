@@ -80,12 +80,7 @@ def run_oai_interleaved(
 		"messages": final_messages,
 	}
 
-	if "o1" in model_name or "o3-mini" in model_name:
-		request_args["reasoning_effort"] = "low"
-		request_args["max_completion_tokens"] = max_tokens
-	else:
-		request_args["max_completion_tokens"] = max_tokens
-		request_args["temperature"] = temperature
+	request_args["temperature"] = temperature
 
 	try:
 		completion = client.chat.completions.create(**request_args)
