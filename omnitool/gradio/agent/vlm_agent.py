@@ -138,7 +138,8 @@ class VLMAgent:
 
         # drop looping actions msg, byte image etc
         planner_messages = messages
-        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=10)
+        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=6)
+        _strip_reasoning_from_history(planner_messages)
         _remove_som_images(planner_messages)
         _maybe_filter_to_n_most_recent_images(planner_messages, self.only_n_most_recent_images)
 
@@ -272,89 +273,54 @@ class VLMAgent:
         self.api_response_callback(response)
 
     def _get_system_prompt(self, screen_info: str = ""):
-        main_section = f"""
-You are using a Windows device.
-You are able to use a mouse and keyboard to interact with any application or part of the system, including the desktop, file explorer, system settings, applications, and the browser.
-NEVER interact with the OmniParser control window or its Send button.
-On the very first step, do not click anything in the current OmniParser window. Use a keyboard shortcut or other OS-level action to open or switch to a new target window first.
-Minimize or move out of the way any window that blocks access to what you need.
-You may be given some history plan and actions, this is the response from the previous loop.
-You should carefully consider your plan base on the task, screenshot, and history actions.
+        main_section = f"""You are a Windows desktop automation agent. Use mouse and keyboard to complete the task.
+NEVER interact with the OmniParser control window. On step 1, switch away from it first.
 
-Here is the list of all detected bounding boxes by IDs on the screen and their description:{screen_info}
+Detected UI elements (Box ID: description):{screen_info}
 
-Your available "Next Action" only include:
-- key: presses a keyboard shortcut or single key; use the value field for the key sequence, for example "win", "win+r", "alt+tab", or "ctrl+l".
-- type: types a string of text.
-- left_click: move mouse to box id and left clicks.
-- right_click: move mouse to box id and right clicks.
-- double_click: move mouse to box id and double clicks.
-- hover: move mouse to box id.
-- scroll_up: scrolls the screen up to view previous content.
-- scroll_down: scrolls the screen down, when the desired button is not visible, or you need to see more content. 
-- wait: waits for 1 second for the device to load or respond.
+Actions: key | type | left_click | right_click | double_click | hover | scroll_up | scroll_down | wait | None
+- key/type require a "value" field. left_click/right_click/double_click/hover require a "Box ID" field.
 
-Based on the visual information from the screenshot image and the detected bounding boxes, please determine the next action, the Box ID you should operate on (if action is one of 'type', 'hover', 'scroll_up', 'scroll_down', 'wait', there should be no Box ID field), and the value (if the action is 'type') in order to complete the task.
-
-Output format:
+Respond with ONLY this JSON:
 ```json
 {{
-    "Reasoning": str, # describe what is in the current screen, taking into account the history, then describe your step-by-step thoughts on how to achieve the task, choose one action from available actions at a time.
-    "Next Action": "key" | "type" | "left_click" | "right_click" | "double_click" | "hover" | "scroll_up" | "scroll_down" | "wait" | "None" # output only one exact token; do not add explanations or punctuation in this field.
+    "Reasoning": "<one sentence: what you see and why this action>",
+    "Next Action": "<action token>",
     "Box ID": n,
-    "value": "xxx" # only provide value field if the action is type or key, else don't include value key
+    "value": "xxx"
 }}
 ```
-
-One Example:
-```json
-{{  
-    "Reasoning": "The current screen shows google result of amazon, in previous action I have searched amazon on google. Then I need to click on the first search results to go to amazon.com.",
-    "Next Action": "left_click",
-    "Box ID": m
-}}
-```
-
-Another Example:
-```json
-{{
-    "Reasoning": "The current screen does not show 'submit' button, I need to scroll down to see if the button is available.",
-    "Next Action": "scroll_down",
-}}
-```
-
-IMPORTANT NOTES:
-1. You should only give a single action at a time.
-2. Keep "Reasoning" brief and concrete (max two short sentences). Avoid generic or repetitive text.
-3. "Next Action" must be exactly one token from the allowed list. Do not include descriptions in that field.
-4. "Box ID" should be included only when clicking/hovering a specific element. For scroll/wait/None, omit "Box ID".
-5. If the user asks to watch a video (for example YouTube highlights), prioritize browser actions: focus search/input, type the query, submit, then click a relevant video result.
-6. Do not interact with a page chatbot unless the task explicitly asks for chatting with that bot.
-7. Choose actions by visual grounding and current UI state, not by matching words from prior text.
-
+Rules: single action per turn; omit Box ID for scroll/wait/key/type; omit value unless action is key or type; say Next Action None when done; avoid repeating the same action twice in a row.
 """
-        thinking_model = "r1" in self.model
-        if not thinking_model:
-            main_section += """
-7. You should give an analysis to the current screen and history, then choose only the immediate next action.
-8. Keyboard shortcuts are allowed only through the "key" action.
-
-"""
-        else:
-            main_section += """
-7. In <think> XML tags give a brief analysis of current screen and history, then choose only the immediate next action. In <output> XML tags put the next action prediction JSON.
-8. Keyboard shortcuts are allowed only through the "key" action.
-
-"""
-        main_section += """
-9. Attach the next action prediction in the "Next Action".
-10. When the task is completed, don't complete additional actions. You should say "Next Action": "None" in the json field.
-11. Break multi-step tasks into subgoals and execute one subgoal at a time in user-requested order.
-12. Avoid choosing the same action/element multiple times in a row. If repetition occurs, pick a different corrective action.
-13. If you are prompted with login, captcha, or anything requiring user permission, return "Next Action": "None".
-""" 
-
         return main_section
+
+def _strip_reasoning_from_history(messages: list):
+    """
+    In older assistant turns, replace the full Reasoning text with a compact
+    summary so the model still knows what actions were taken without paying
+    full token cost for every past explanation.
+    Keep only the last assistant turn intact (the model needs full context for
+    the immediately preceding step).
+    """
+    assistant_indices = [
+        i for i, m in enumerate(messages)
+        if isinstance(m, dict) and m.get("role") == "assistant"
+    ]
+    # Leave the last assistant message untouched
+    for idx in assistant_indices[:-1]:
+        content = messages[idx].get("content", [])
+        if not isinstance(content, list):
+            continue
+        new_content = []
+        for block in content:
+            if hasattr(block, "text"):  # BetaTextBlock
+                import re
+                # Keep only the Next Action line(s), drop verbose Reasoning
+                compact = re.sub(r"[^\n]*Reasoning[^\n]*\n?", "", block.text, flags=re.IGNORECASE)
+                block = type(block)(text=compact.strip(), type=block.type)
+            new_content.append(block)
+        messages[idx]["content"] = new_content
+
 
 def _trim_messages_to_n_most_recent_turns(
     messages: list,
