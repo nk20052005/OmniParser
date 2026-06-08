@@ -84,7 +84,7 @@ def run_oai_interleaved(
 		request_args["reasoning_effort"] = "low"
 		request_args["max_completion_tokens"] = max_tokens
 	else:
-		request_args["max_tokens"] = max_tokens
+		request_args["max_completion_tokens"] = max_tokens
 		request_args["temperature"] = temperature
 
 	try:

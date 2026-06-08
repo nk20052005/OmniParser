@@ -306,7 +306,7 @@ def process_input(user_input, state):
 
 def stop_app(state):
     state["stop"] = True
-    return "App stopped"
+    return
 
 def get_header_image_base64():
     try:
