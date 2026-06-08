@@ -34,11 +34,15 @@ class OmniParserClient:
     
     def reformat_messages(self, response_json: dict):
         screen_info = ""
-        for idx, element in enumerate(response_json["parsed_content_list"]):
+        elements = response_json["parsed_content_list"]
+        # Cap at 80 elements — beyond that the list adds tokens without aiding accuracy
+        for idx, element in enumerate(elements[:80]):
             element['idx'] = idx
             if element['type'] == 'text':
-                screen_info += f'ID: {idx}, Text: {element["content"]}\n'
+                screen_info += f'{idx}:{element["content"]}\n'
             elif element['type'] == 'icon':
-                screen_info += f'ID: {idx}, Icon: {element["content"]}\n'
+                screen_info += f'{idx}:[{element["content"]}]\n'
+        if len(elements) > 80:
+            screen_info += f'... (+{len(elements) - 80} more elements not shown)\n'
         response_json['screen_info'] = screen_info
         return response_json

@@ -138,7 +138,7 @@ class VLMAgent:
 
         # drop looping actions msg, byte image etc
         planner_messages = messages
-        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=6)
+        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=4)
         _strip_reasoning_from_history(planner_messages)
         _remove_som_images(planner_messages)
         _maybe_filter_to_n_most_recent_images(planner_messages, self.only_n_most_recent_images)
@@ -146,7 +146,7 @@ class VLMAgent:
         if isinstance(planner_messages[-1], dict):
             if not isinstance(planner_messages[-1]["content"], list):
                 planner_messages[-1]["content"] = [planner_messages[-1]["content"]]
-            planner_messages[-1]["content"].append(f"{OUTPUT_DIR}/screenshot_{screenshot_uuid}.png")
+            # Send only the SOM image — it already has numbered boxes drawn on it
             planner_messages[-1]["content"].append(f"{OUTPUT_DIR}/screenshot_som_{screenshot_uuid}.png")
 
         start = time.time()
