@@ -1,3 +1,48 @@
 INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on http://127.0.0.1:5000
 INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:35] "GET /probe HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:37] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:40] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:40] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:41] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:41] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:42] "POST /execute HTTP/1.1" 200 -
+DEBUG:PIL.PngImagePlugin:STREAM b'IHDR' 16 13
+DEBUG:PIL.PngImagePlugin:STREAM b'iCCP' 41 2465
+DEBUG:PIL.PngImagePlugin:iCCP profile name b'ICC Profile'
+DEBUG:PIL.PngImagePlugin:Compression method 0
+DEBUG:PIL.PngImagePlugin:STREAM b'IDAT' 2518 673
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:42] "GET /screenshot HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:50] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:51] "POST /execute HTTP/1.1" 200 -
+DEBUG:PIL.PngImagePlugin:STREAM b'IHDR' 16 13
+DEBUG:PIL.PngImagePlugin:STREAM b'iCCP' 41 2465
+DEBUG:PIL.PngImagePlugin:iCCP profile name b'ICC Profile'
+DEBUG:PIL.PngImagePlugin:Compression method 0
+DEBUG:PIL.PngImagePlugin:STREAM b'IDAT' 2518 673
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:51] "GET /screenshot HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:55] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:56] "POST /execute HTTP/1.1" 200 -
+DEBUG:PIL.PngImagePlugin:STREAM b'IHDR' 16 13
+DEBUG:PIL.PngImagePlugin:STREAM b'iCCP' 41 2465
+DEBUG:PIL.PngImagePlugin:iCCP profile name b'ICC Profile'
+DEBUG:PIL.PngImagePlugin:Compression method 0
+DEBUG:PIL.PngImagePlugin:STREAM b'IDAT' 2518 673
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:45:56] "GET /screenshot HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:00] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:01] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:02] "POST /execute HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:02] "POST /execute HTTP/1.1" 200 -
+DEBUG:PIL.PngImagePlugin:STREAM b'IHDR' 16 13
+DEBUG:PIL.PngImagePlugin:STREAM b'iCCP' 41 2465
+DEBUG:PIL.PngImagePlugin:iCCP profile name b'ICC Profile'
+DEBUG:PIL.PngImagePlugin:Compression method 0
+DEBUG:PIL.PngImagePlugin:STREAM b'IDAT' 2518 673
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:02] "GET /screenshot HTTP/1.1" 200 -
+DEBUG:PIL.PngImagePlugin:STREAM b'IHDR' 16 13
+DEBUG:PIL.PngImagePlugin:STREAM b'iCCP' 41 2465
+DEBUG:PIL.PngImagePlugin:iCCP profile name b'ICC Profile'
+DEBUG:PIL.PngImagePlugin:Compression method 0
+DEBUG:PIL.PngImagePlugin:STREAM b'IDAT' 2518 673
+INFO:werkzeug:127.0.0.1 - - [10/Jun/2026 05:46:02] "GET /screenshot HTTP/1.1" 200 -
