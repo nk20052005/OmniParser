@@ -20,38 +20,15 @@ import re
 import os
 OUTPUT_DIR = "./tmp/outputs"
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-ORCHESTRATOR_LEDGER_PROMPT = """
-Recall we are working on the following request:
+ORCHESTRATOR_LEDGER_PROMPT = """Task: {task}
 
-{task}
-
-To make progress on the request, please answer the following questions, including necessary reasoning:
-
-    - Is the request fully satisfied? (True if complete, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed)
-    - Are we in a loop where we are repeating the same requests and / or getting the same responses as before? Loops can span multiple turns, and can include repeated actions like scrolling up or down more than a handful of times.
-    - Are we making forward progress? (True if just starting, or recent messages are adding value. False if recent messages show evidence of being stuck in a loop or if there is evidence of significant barriers to success such as the inability to read from a required file)
-    - What instruction or question would you give in order to complete the task? 
-
-Please output an answer in pure JSON format according to the following schema. The JSON object must be parsable as-is. DO NOT OUTPUT ANYTHING OTHER THAN JSON, AND DO NOT DEVIATE FROM THIS SCHEMA:
-
-    {{
-       "is_request_satisfied": {{
-            "reason": string,
-            "answer": boolean
-        }},
-        "is_in_loop": {{
-            "reason": string,
-            "answer": boolean
-        }},
-        "is_progress_being_made": {{
-            "reason": string,
-            "answer": boolean
-        }},
-        "instruction_or_question": {{
-            "reason": string,
-            "answer": string
-        }}
-    }}
+Respond with ONLY this JSON:
+{{
+  "is_request_satisfied": {{"reason": str, "answer": bool}},
+  "is_in_loop": {{"reason": str, "answer": bool}},
+  "is_progress_being_made": {{"reason": str, "answer": bool}},
+  "instruction_or_question": {{"reason": str, "answer": str}}
+}}
 """
 
 VALID_NEXT_ACTIONS = {
@@ -163,7 +140,7 @@ class VLMOrchestratedAgent:
             self.output_callback(f'-- Plan: {plan} --', )
             # update messages with the plan
             messages.append({"role": "assistant", "content": plan})
-        else:
+        elif self.step_count % 3 == 0:
             updated_ledger = self._update_ledger(messages)
             self.output_callback(
                 f'<details>'
@@ -194,13 +171,15 @@ class VLMOrchestratedAgent:
 
         # drop looping actions msg, byte image etc
         planner_messages = messages
+        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=4)
+        _strip_reasoning_from_history(planner_messages)
         _remove_som_images(planner_messages)
         _maybe_filter_to_n_most_recent_images(planner_messages, self.only_n_most_recent_images)
 
         if isinstance(planner_messages[-1], dict):
             if not isinstance(planner_messages[-1]["content"], list):
                 planner_messages[-1]["content"] = [planner_messages[-1]["content"]]
-            planner_messages[-1]["content"].append(f"{OUTPUT_DIR}/screenshot_{screenshot_uuid}.png")
+            # Send only the SOM image — it already has numbered boxes drawn on it
             planner_messages[-1]["content"].append(f"{OUTPUT_DIR}/screenshot_som_{screenshot_uuid}.png")
 
         start = time.time()
@@ -348,93 +327,44 @@ class VLMOrchestratedAgent:
         self.api_response_callback(response)
 
     def _get_system_prompt(self, screen_info: str = ""):
-        main_section = f"""
-You are using a Windows device.
-You are able to use a mouse and keyboard to interact with the computer based on the given task and screenshot.
-You are able to use a mouse and keyboard to interact with any application or part of the system, including the desktop, file explorer, system settings, applications, and the browser.
-NEVER interact with the OmniParser control window or its Send button.
-On the very first step, do not click anything in the current OmniParser window. Use a keyboard shortcut or other OS-level action to open or switch to a new target window first.
+        main_section = f"""You are a Windows desktop automation agent. Use mouse and keyboard to complete the task.
+NEVER interact with the OmniParser control window. On step 1, switch away from it first.
 
-You may be given some history plan and actions, this is the response from the previous loop.
-You should carefully consider your plan base on the task, screenshot, and history actions.
+Detected UI elements (Box ID: description):{screen_info}
 
-Here is the list of all detected bounding boxes by IDs on the screen and their description:{screen_info}
+Actions: key | type | left_click | right_click | double_click | hover | scroll_up | scroll_down | wait | None
+- key/type require a "value" field (e.g. "win+r", "alt+tab", "ctrl+l").
+- left_click/right_click/double_click/hover require a "Box ID" field.
+- scroll_up/scroll_down: scroll to see more content.
+- wait: wait 1s for loading.
 
-Your available "Next Action" only include:
-- key: presses a keyboard shortcut or single key; use the value field for the key sequence, for example "win", "win+r", "alt+tab", or "ctrl+l".
-- type: types a string of text.
-- left_click: move mouse to box id and left clicks.
-- right_click: move mouse to box id and right clicks.
-- double_click: move mouse to box id and double clicks.
-- hover: move mouse to box id.
-- scroll_up: scrolls the screen up to view previous content.
-- scroll_down: scrolls the screen down, when the desired button is not visible, or you need to see more content. 
-- wait: waits for 1 second for the device to load or respond.
-
-Based on the visual information from the screenshot image and the detected bounding boxes, please determine the next action, the Box ID you should operate on (if action is one of 'type', 'hover', 'scroll_up', 'scroll_down', 'wait', there should be no Box ID field), and the value (if the action is 'type') in order to complete the task.
-
-Output format:
+Respond with ONLY this JSON:
 ```json
 {{
-    "Reasoning": str, # describe what is in the current screen, taking into account the history, then describe your step-by-step thoughts on how to achieve the task, choose one action from available actions at a time.
-    "Next Action": "key" | "type" | "left_click" | "right_click" | "double_click" | "hover" | "scroll_up" | "scroll_down" | "wait" | "None" # one action at a time, describe it in short and precisely. 
+    "Reasoning": "<analyze screen and history, then explain why this action>",
+    "Next Action": "<action token>",
     "Box ID": n,
-    "value": "xxx" # only provide value field if the action is type or key, else don't include value key
+    "value": "xxx"
 }}
 ```
 
-One Example:
-```json
-{{  
-    "Reasoning": "The current screen shows google result of amazon, in previous action I have searched amazon on google. Then I need to click on the first search results to go to amazon.com.",
-    "Next Action": "left_click",
-    "Box ID": m
-}}
-```
+Think carefully before acting:
+1. LOOK at the screenshot first. Describe what you actually see — window title, active app, visible buttons/fields.
+2. VERIFY your target element exists on screen before clicking. Cross-check the Box ID description against what you see in the screenshot. If the description says "icon" but you need a button, find the right element.
+3. REFLECT on history. What did you do last? Did it work? If the screen hasn't changed, your last action may have failed — try a different approach.
+4. PREFER specific elements. When multiple elements could match, pick the one whose bounding box most precisely covers your intended target. Avoid clicking text labels when you mean to click their adjacent button/icon.
+5. PLAN ahead. Consider what the next 2-3 steps will be to avoid dead ends.
 
-Another Example:
-```json
-{{
-    "Reasoning": "The current screen shows the front page of amazon. There is no previous action. Therefore I need to type "Apple watch" in the search bar.",
-    "Next Action": "type",
-    "Box ID": n,
-    "value": "Apple watch"
-}}
-```
-
-Another Example:
-```json
-{{
-    "Reasoning": "The current screen does not show 'submit' button, I need to scroll down to see if the button is available.",
-    "Next Action": "scroll_down",
-}}
-```
-
-IMPORTANT NOTES:
-1. You should only give a single action at a time.
-2. Choose actions by visual grounding and current UI state, not by matching words from prior text.
-
+Rules:
+- Single action per turn.
+- Choose actions by visual grounding and current UI state, not by matching words from prior text.
+- Omit Box ID for key/type/scroll/wait. Omit value unless action is key or type.
+- Say Next Action "None" when task is done or login/captcha is needed.
+- Break multi-step tasks into subgoals; complete each in order.
+- Never repeat the same action on the same element consecutively; if stuck, try a different approach.
 """
-        thinking_model = "r1" in self.model
-        if not thinking_model:
-            main_section += """
-3. You should give an analysis to the current screen, and reflect on what has been done by looking at the history, then describe your step-by-step thoughts on how to achieve the task.
-4. Keyboard shortcuts are allowed only through the "key" action.
-
-"""
-        else:
-            main_section += """
-3. In <think> XML tags give an analysis to the current screen, and reflect on what has been done by looking at the history, then describe your step-by-step thoughts on how to achieve the task. In <output> XML tags put the next action prediction JSON.
-4. Keyboard shortcuts are allowed only through the "key" action.
-
-"""
-        main_section += """
-5. Attach the next action prediction in the "Next Action".
-6. When the task is completed, don't complete additional actions. You should say "Next Action": "None" in the json field.
-7. The tasks involve buying multiple products or navigating through multiple pages. You should break it into subgoals and complete each subgoal one by one in the order of the instructions.
-8. avoid choosing the same action/elements multiple times in a row, if it happens, reflect to yourself, what may have gone wrong, and predict a different action.
-9. If you are prompted with login information page or captcha page, or you think it need user's permission to do the next action, you should say "Next Action": "None" in the json field.
-""" 
+        if "r1" in self.model:
+            main_section += """Use <think> tags for analysis, <output> tags for the JSON.\n"""
 
         return main_section
 
@@ -509,6 +439,37 @@ def _remove_som_images(messages):
                 cnt for cnt in msg_content 
                 if not (isinstance(cnt, str) and 'som' in cnt and is_image_path(cnt))
             ]
+
+
+def _strip_reasoning_from_history(messages: list):
+    """Strip verbose Reasoning from older assistant turns to save tokens."""
+    assistant_indices = [
+        i for i, m in enumerate(messages)
+        if isinstance(m, dict) and m.get("role") == "assistant"
+    ]
+    for idx in assistant_indices[:-1]:
+        content = messages[idx].get("content", [])
+        if not isinstance(content, list):
+            continue
+        new_content = []
+        for block in content:
+            if hasattr(block, "text"):
+                compact = re.sub(r"[^\n]*Reasoning[^\n]*\n?", "", block.text, flags=re.IGNORECASE)
+                block = type(block)(text=compact.strip(), type=block.type)
+            new_content.append(block)
+        messages[idx]["content"] = new_content
+
+
+def _trim_messages_to_n_most_recent_turns(
+    messages: list,
+    turns_to_keep: int = 10,
+):
+    """Keep the first message (task) and the last turns_to_keep*2 messages."""
+    if len(messages) <= 1:
+        return
+    max_history = turns_to_keep * 2
+    if len(messages) - 1 > max_history:
+        messages[1:] = messages[-(max_history):]
 
 
 def _maybe_filter_to_n_most_recent_images(

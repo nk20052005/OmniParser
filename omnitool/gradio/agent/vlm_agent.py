@@ -290,6 +290,13 @@ Respond with ONLY this JSON:
     "value": "xxx"
 }}
 ```
+
+Think carefully before acting:
+1. LOOK at the screenshot first. Describe what you actually see — window title, active app, visible buttons/fields.
+2. VERIFY your target element exists on screen before clicking. Cross-check the Box ID description against what you see in the screenshot. If the description says "icon" but you need a button, find the right element.
+3. REFLECT on history. What did you do last? Did it work? If the screen hasn't changed, your last action may have failed — try a different approach.
+4. PREFER specific elements. When multiple elements could match, pick the one whose bounding box most precisely covers your intended target. Avoid clicking text labels when you mean to click their adjacent button/icon.
+
 Rules: single action per turn; omit Box ID for scroll/wait/key/type; omit value unless action is key or type; say Next Action None when done; avoid repeating the same action twice in a row.
 """
         return main_section

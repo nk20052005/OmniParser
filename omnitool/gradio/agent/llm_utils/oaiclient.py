@@ -24,6 +24,15 @@ def load_dotenv(dotenv_path: Path) -> None:
 
 load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 
+_client_cache: dict[tuple, OpenAI] = {}
+
+
+def _get_client(endpoint: str, api_key: str) -> OpenAI:
+	key = (endpoint, api_key)
+	if key not in _client_cache:
+		_client_cache[key] = OpenAI(base_url=endpoint, api_key=api_key)
+	return _client_cache[key]
+
 
 def _build_messages(messages: list | str, system: str, model_name: str) -> list:
 	final_messages = [{"role": "system", "content": system}]
@@ -68,10 +77,8 @@ def run_oai_interleaved(
 	endpoint = os.getenv("OPENAI_BASE_URL") or provider_base_url
 	deployment_name = os.getenv("OPENAI_MODEL") or model_name
 
-	client = OpenAI(
-		base_url=endpoint,
-		api_key=api_key or os.getenv("OPENAI_API_KEY"),
-	)
+	resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+	client = _get_client(endpoint, resolved_key)
 
 	final_messages = _build_messages(messages, system, model_name)
 

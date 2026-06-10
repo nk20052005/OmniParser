@@ -48,7 +48,7 @@ def sampling_loop_sync(
     tool_output_callback: Callable[[ToolResult, str], None],
     api_response_callback: Callable[[APIResponse[BetaMessage]], None],
     api_key: str,
-    only_n_most_recent_images: int | None = 2,
+    only_n_most_recent_images: int | None = 1,
     max_tokens: int = 4096,
     omniparser_url: str,
     save_folder: str = "./uploads"

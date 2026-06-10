@@ -150,6 +150,7 @@ class ComputerTool(BaseAnthropicTool):
             
             if action == "mouse_move":
                 self.send_to_vm(f"pyautogui.moveTo({x}, {y})")
+                self._last_move_coordinate = (x, y)
                 return ToolResult(output=f"Moved mouse to ({x}, {y})")
             elif action == "left_click_drag":
                 current_x, current_y = self.send_to_vm("pyautogui.position()")
@@ -206,18 +207,21 @@ class ComputerTool(BaseAnthropicTool):
                 x, y = self.scale_coordinates(ScalingSource.COMPUTER, x, y)
                 return ToolResult(output=f"X={x},Y={y}")
             else:
+                # Use stored coordinate from preceding mouse_move for precise clicking
+                coord = getattr(self, '_last_move_coordinate', None)
+                coord_arg = f"{coord[0]}, {coord[1]}" if coord else ""
                 if action == "left_click":
-                    self.send_to_vm("pyautogui.click()")
+                    self.send_to_vm(f"pyautogui.click({coord_arg})")
                 elif action == "right_click":
-                    self.send_to_vm("pyautogui.rightClick()")
+                    self.send_to_vm(f"pyautogui.rightClick({coord_arg})")
                 elif action == "middle_click":
-                    self.send_to_vm("pyautogui.middleClick()")
+                    self.send_to_vm(f"pyautogui.middleClick({coord_arg})")
                 elif action == "double_click":
-                    self.send_to_vm("pyautogui.doubleClick()")
+                    self.send_to_vm(f"pyautogui.doubleClick({coord_arg})")
                 elif action == "left_press":
                     self.send_to_vm("pyautogui.mouseDown()")
-                    time.sleep(1)
                     self.send_to_vm("pyautogui.mouseUp()")
+                self._last_move_coordinate = None
                 return ToolResult(output=f"Performed {action}")
         if action in ("scroll_up", "scroll_down"):
             if action == "scroll_up":
@@ -250,7 +254,6 @@ class ComputerTool(BaseAnthropicTool):
                 json={"command": command_list},
                 timeout=90
             )
-            time.sleep(0.7) # avoid async error as actions take time to complete
             print(f"action executed")
             if response.status_code != 200:
                 raise ToolError(f"Failed to execute command. Status code: {response.status_code}")
@@ -270,7 +273,6 @@ class ComputerTool(BaseAnthropicTool):
             self.target_dimension = MAX_SCALING_TARGETS["WXGA"]
         width, height = self.target_dimension["width"], self.target_dimension["height"]
         screenshot, path = get_screenshot(resize=True, target_width=width, target_height=height)
-        time.sleep(0.7) # avoid async error as actions take time to complete
         return ToolResult(base64_image=base64.b64encode(path.read_bytes()).decode())
 
     def padding_image(self, screenshot):
