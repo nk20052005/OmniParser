@@ -37,7 +37,8 @@ Action = Literal[
     "screenshot",
     "cursor_position",
     "hover",
-    "wait"
+    "wait",
+    "shell",
 ]
 
 
@@ -234,6 +235,24 @@ class ComputerTool(BaseAnthropicTool):
         if action == "wait":
             time.sleep(1)
             return ToolResult(output=f"Performed {action}")
+        if action == "shell":
+            if text is None:
+                raise ToolError("text is required for shell (the command to run)")
+            # Run a shell command via the host control server
+            command_list = ["cmd", "/c", text]
+            try:
+                print(f"shell command: {command_list}")
+                response = requests.post(
+                    f"{get_host_control_base_url()}/execute",
+                    headers={'Content-Type': 'application/json'},
+                    json={"command": command_list},
+                    timeout=90
+                )
+                output = response.json().get('output', '').strip()
+                print(f"shell output: {output}")
+                return ToolResult(output=f"Shell: {output}" if output else "Shell command executed")
+            except requests.exceptions.RequestException as e:
+                raise ToolError(f"Shell command failed: {str(e)}")
         raise ToolError(f"Invalid action: {action}")
 
     def send_to_vm(self, action: str):

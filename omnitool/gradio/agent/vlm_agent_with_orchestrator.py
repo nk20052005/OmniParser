@@ -41,6 +41,7 @@ VALID_NEXT_ACTIONS = {
     "scroll_up",
     "scroll_down",
     "wait",
+    "shell",
     "none",
 }
 
@@ -171,8 +172,9 @@ class VLMOrchestratedAgent:
 
         # drop looping actions msg, byte image etc
         planner_messages = messages
-        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=4)
+        _trim_messages_to_n_most_recent_turns(planner_messages, turns_to_keep=2)
         _strip_reasoning_from_history(planner_messages)
+        _strip_old_tool_result_images(planner_messages)
         _remove_som_images(planner_messages)
         _maybe_filter_to_n_most_recent_images(planner_messages, self.only_n_most_recent_images)
 
@@ -290,14 +292,9 @@ class VLMOrchestratedAgent:
 
         if vlm_response_json["Next Action"] == "None":
             print("Task paused/completed.")
-        elif vlm_response_json["Next Action"] == "key":
+        elif vlm_response_json["Next Action"] in ("key", "type", "shell"):
             sim_content_block = BetaToolUseBlock(id=f'toolu_{uuid.uuid4()}',
-                                        input={'action': 'key', 'text': vlm_response_json.get("value", "")},
-                                        name='computer', type='tool_use')
-            response_content.append(sim_content_block)
-        elif vlm_response_json["Next Action"] == "type":
-            sim_content_block = BetaToolUseBlock(id=f'toolu_{uuid.uuid4()}',
-                                        input={'action': vlm_response_json["Next Action"], 'text': vlm_response_json["value"]},
+                                        input={'action': vlm_response_json["Next Action"], 'text': vlm_response_json.get("value", "")},
                                         name='computer', type='tool_use')
             response_content.append(sim_content_block)
         else:
@@ -332,11 +329,12 @@ NEVER interact with the OmniParser control window. On step 1, switch away from i
 
 Detected UI elements (Box ID: description):{screen_info}
 
-Actions: key | type | left_click | right_click | double_click | hover | scroll_up | scroll_down | wait | None
+Actions: key | type | left_click | right_click | double_click | hover | scroll_up | scroll_down | wait | shell | None
 - key/type require a "value" field (e.g. "win+r", "alt+tab", "ctrl+l").
 - left_click/right_click/double_click/hover require a "Box ID" field.
 - scroll_up/scroll_down: scroll to see more content.
 - wait: wait 1s for loading.
+- shell: run a Windows CLI command via cmd. Use "value" for the command. Examples: "start chrome https://google.com", "start notepad", "explorer C:\\Users", "start calc". PREFER shell to open apps/URLs/files — it's faster than navigating UI.
 
 Respond with ONLY this JSON:
 ```json
@@ -354,11 +352,12 @@ Think carefully before acting:
 3. REFLECT on history. What did you do last? Did it work? If the screen hasn't changed, your last action may have failed — try a different approach.
 4. PREFER specific elements. When multiple elements could match, pick the one whose bounding box most precisely covers your intended target. Avoid clicking text labels when you mean to click their adjacent button/icon.
 5. PLAN ahead. Consider what the next 2-3 steps will be to avoid dead ends.
+6. USE shell when you need to open an app, URL, or file — it's one step instead of multiple clicks.
 
 Rules:
 - Single action per turn.
 - Choose actions by visual grounding and current UI state, not by matching words from prior text.
-- Omit Box ID for key/type/scroll/wait. Omit value unless action is key or type.
+- Omit Box ID for key/type/scroll/wait/shell. Omit value unless action is key, type, or shell.
 - Say Next Action "None" when task is done or login/captcha is needed.
 - Break multi-step tasks into subgoals; complete each in order.
 - Never repeat the same action on the same element consecutively; if stuck, try a different approach.
@@ -458,6 +457,36 @@ def _strip_reasoning_from_history(messages: list):
                 block = type(block)(text=compact.strip(), type=block.type)
             new_content.append(block)
         messages[idx]["content"] = new_content
+
+
+def _strip_old_tool_result_images(messages: list):
+    """Remove base64 images from all tool_result blocks except the last one.
+    These images are huge token sinks and the model only needs the latest screenshot."""
+    # Find indices of messages that contain tool_result with images
+    tool_result_indices = []
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for cnt in content:
+            if isinstance(cnt, dict) and cnt.get("type") == "tool_result":
+                for entry in cnt.get("content", []):
+                    if isinstance(entry, dict) and entry.get("type") == "image":
+                        tool_result_indices.append(i)
+                        break
+    # Strip images from all but the last tool_result message
+    for idx in tool_result_indices[:-1]:
+        content = messages[idx].get("content", [])
+        if not isinstance(content, list):
+            continue
+        for cnt in content:
+            if isinstance(cnt, dict) and cnt.get("type") == "tool_result":
+                cnt["content"] = [
+                    entry for entry in cnt.get("content", [])
+                    if not (isinstance(entry, dict) and entry.get("type") == "image")
+                ]
 
 
 def _trim_messages_to_n_most_recent_turns(
